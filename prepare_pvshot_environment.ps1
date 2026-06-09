@@ -269,6 +269,15 @@ $foam = Ensure-FoamFile $preparedCase.CaseDir $preparedCase.SafeName
 $outputDir = Join-Path (Join-Path $workRoot "output") $preparedCase.SafeName
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
+$existingConfig = $null
+if (Test-Path -LiteralPath $ConfigPath) {
+  try {
+    $existingConfig = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
+  } catch {
+    $existingConfig = $null
+  }
+}
+
 $config = [ordered]@{
   pvpython_path = $pvpython
   paraview_version = $version
@@ -279,6 +288,21 @@ $config = [ordered]@{
   path_was_non_ascii = [bool]$preparedCase.PathWasNonAscii
   case_was_copied = [bool]$preparedCase.CaseWasCopied
   foam_file_was_created = [bool]$foam.FoamFileWasCreated
+}
+
+if ($existingConfig) {
+  foreach ($key in @(
+      "screenshot_settings",
+      "pvsm_state_file",
+      "batch_enabled",
+      "batch_case_root",
+      "output_root",
+      "batch_cases"
+    )) {
+    if ($existingConfig.PSObject.Properties.Name -contains $key) {
+      $config[$key] = $existingConfig.$key
+    }
+  }
 }
 
 $json = $config | ConvertTo-Json -Depth 4

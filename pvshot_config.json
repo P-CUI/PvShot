@@ -9,7 +9,7 @@
   "case_was_copied": true,
   "foam_file_was_created": false,
   "screenshot_settings": {
-    "time_mode": "all",
+    "time_mode": "stride",
     "selected_times": [
       0.0,
       0.0015,
@@ -23,73 +23,12 @@
       0.0,
       0.00699
     ],
-    "field_name": "p",
-    "field_association": "CELLS",
-    "field_component": "",
-    "visualization_type": "vector_arrows",
-    "vector_field": "U",
-    "arrow_density": "dense",
-    "arrow_scale": "auto",
-    "arrow_color": "speed",
-    "glyph_source": "2d_glyph",
-    "glyph_2d_shape": "Arrow",
-    "glyph_2d_filled": true,
-    "glyph_mode": "Uniform Spatial Distribution (Bounds Based)",
-    "glyph_max_points": 750,
-    "glyph_stride": 10,
-    "glyph_orient": true,
-    "glyph_scale_array": "none",
-    "glyph_scale_factor": "",
-    "glyph_vector_scale_mode": "Scale by Magnitude",
-    "glyph_line_width": 1.5,
-    "glyph_tip_length": 0.35,
-    "glyph_tip_radius": 0.1,
-    "glyph_shaft_radius": 0.03,
-    "color_range_mode": "auto_each",
+    "color_range_mode": "data",
     "use_color_range": false,
     "color_range": [
       0.0,
-      1.0
-    ],
-    "mesh_regions": [
-      "internalMesh"
-    ],
-    "angle_mode": "wedge_midplane",
-    "angles_deg": [
-      0.0
-    ],
-    "slice_origin": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "rotation_axis": "Y",
-    "roi_mode": "full",
-    "use_box_clip": false,
-    "box_position": [
-      0.0,
-      0.0,
-      -0.002
-    ],
-    "box_length": [
-      0.14,
-      0.28,
-      0.004
-    ],
-    "target_long_side": 1400,
-    "min_image_side": 64,
-    "max_image_side": 4096,
-    "background": [
-      1.0,
-      1.0,
-      1.0
-    ],
-    "show_mesh_edges": false,
-    "show_color_bar": false,
-    "show_orientation_axes": false,
-    "auto_frame_mesh": true,
-    "mesh_padding": 1.0,
-    "camera_distance": 0.45
+      100000.0
+    ]
   },
   "batch_case_root": "D:\\pvshot_work\\cases",
   "output_root": "D:\\pvshot_work\\state_batch_test_output",
@@ -105,8 +44,6 @@
       "foam_file_was_created": false
     }
   ],
-  "style_source": "pvsm",
-  "pvsm_state_file": "D:\\Projects2026\\paraview_snapshot_test\\Demo\\1000cSt+33\\Output\\test_state4.pvsm",
-  "field_policy": "override",
+  "pvsm_state_file": "D:\\Projects2026\\paraview_snapshot_test\\Demo\\1000cSt+33\\Output\\test_state7.pvsm",
   "batch_enabled": false
 }

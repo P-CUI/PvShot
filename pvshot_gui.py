@@ -21,60 +21,22 @@ DEFAULT_SETTINGS = {
     "selected_times": [0.0, 0.0015, 0.003, 0.0045, 0.006, 0.00699],
     "time_stride": 10,
     "time_range": [0.0, 0.00699],
-    "field_name": "alpha.water",
-    "field_association": "CELLS",
-    "field_component": "",
-    "visualization_type": "scalar",
-    "vector_field": "U",
-    "arrow_density": "medium",
-    "arrow_scale": "auto",
-    "arrow_color": "speed",
-    "glyph_source": "2d_glyph",
-    "glyph_2d_shape": "Arrow",
-    "glyph_2d_filled": True,
-    "glyph_mode": "Uniform Spatial Distribution (Bounds Based)",
-    "glyph_max_points": 750,
-    "glyph_stride": 10,
-    "glyph_orient": True,
-    "glyph_scale_array": "none",
-    "glyph_scale_factor": "",
-    "glyph_vector_scale_mode": "Scale by Magnitude",
-    "glyph_line_width": 1.5,
-    "glyph_tip_length": 0.35,
-    "glyph_tip_radius": 0.1,
-    "glyph_shaft_radius": 0.03,
-    "color_range_mode": "fixed",
+    "color_range_mode": "custom",
     "use_color_range": True,
     "color_range": [0.0, 1.0],
-    "mesh_regions": ["internalMesh"],
-    "angle_mode": "wedge_midplane",
-    "angles_deg": [0.0],
-    "slice_origin": [0.0, 0.0, 0.0],
-    "rotation_axis": "Y",
-    "roi_mode": "full",
-    "use_box_clip": False,
-    "box_position": [0.0, 0.0, -0.002],
-    "box_length": [0.14, 0.28, 0.004],
-    "target_long_side": 1400,
-    "min_image_side": 64,
-    "max_image_side": 4096,
-    "background": [1.0, 1.0, 1.0],
-    "show_mesh_edges": False,
-    "show_color_bar": False,
-    "show_orientation_axes": False,
-    "auto_frame_mesh": True,
-    "mesh_padding": 1.0,
-    "camera_distance": 0.45,
 }
 
 RUN_OPTION_DEFAULTS = {
-    "style_source": "generated",
     "pvsm_state_file": "",
-    "field_policy": "state",
-    "state_scalar_filter_policy": "auto",
     "batch_enabled": False,
     "batch_case_root": "",
     "output_root": "",
+}
+
+OBSOLETE_CONFIG_KEYS = {
+    "style_source",
+    "field_policy",
+    "state_scalar_filter_policy",
 }
 
 
@@ -518,6 +480,22 @@ def parse_string_list(value):
     return [part.strip() for part in re.split(r"[,;]+", str(value or "")) if part.strip()]
 
 
+def normalize_color_range_mode(value):
+    aliases = {
+        "fixed": "custom",
+        "manual": "custom",
+        "auto_each": "data",
+        "single-frame": "data",
+        "single_frame": "data",
+        "auto_all": "all_times",
+        "unified": "all_times",
+        "state": "state_file",
+        "state_range": "state_file",
+    }
+    mode = str(value or "custom").strip().lower()
+    return aliases.get(mode, mode)
+
+
 def normalize_run_options(settings):
     data = dict(RUN_OPTION_DEFAULTS)
     for key in RUN_OPTION_DEFAULTS:
@@ -525,24 +503,13 @@ def normalize_run_options(settings):
             data[key] = settings[key]
 
     normalized = {
-        "style_source": str(data["style_source"] or "generated").strip(),
         "pvsm_state_file": str(data["pvsm_state_file"] or "").strip(),
-        "field_policy": str(data["field_policy"] or "state").strip(),
-        "state_scalar_filter_policy": str(
-            data.get("state_scalar_filter_policy") or "auto"
-        ).strip(),
         "batch_enabled": bool(data["batch_enabled"]),
         "batch_case_root": str(data["batch_case_root"] or "").strip(),
         "output_root": str(data["output_root"] or "").strip(),
     }
-    if normalized["style_source"] not in ("generated", "pvsm"):
-        raise ValueError("style_source must be generated or pvsm")
-    if normalized["field_policy"] not in ("state", "override"):
-        raise ValueError("field_policy must be state or override")
-    if normalized["state_scalar_filter_policy"] not in ("auto", "warn", "allow"):
-        raise ValueError("state_scalar_filter_policy must be auto, warn, or allow")
-    if normalized["style_source"] == "pvsm" and not normalized["pvsm_state_file"]:
-        raise ValueError("pvsm_state_file is required when Style source is ParaView state file")
+    if not normalized["pvsm_state_file"]:
+        raise ValueError("pvsm_state_file is required")
     if normalized["batch_enabled"] and not normalized["batch_case_root"]:
         raise ValueError("batch_case_root is required when batch mode is enabled")
     return normalized
@@ -555,85 +522,21 @@ def normalize_settings(settings):
         "selected_times": parse_number_list(data["selected_times"]),
         "time_stride": int(data["time_stride"]),
         "time_range": parse_number_list(data["time_range"]),
-        "field_name": str(data["field_name"]).strip(),
-        "field_association": str(data["field_association"]).strip().upper(),
-        "field_component": str(data.get("field_component") or "").strip(),
-        "visualization_type": str(data.get("visualization_type") or "scalar").strip(),
-        "vector_field": str(data.get("vector_field") or "U").strip(),
-        "arrow_density": str(data.get("arrow_density") or "medium").strip(),
-        "arrow_scale": str(data.get("arrow_scale") or "auto").strip(),
-        "arrow_color": str(data.get("arrow_color") or "speed").strip(),
-        "glyph_source": str(data.get("glyph_source") or "2d_glyph").strip(),
-        "glyph_2d_shape": str(data.get("glyph_2d_shape") or "Arrow").strip(),
-        "glyph_2d_filled": bool(data.get("glyph_2d_filled")),
-        "glyph_mode": str(
-            data.get("glyph_mode") or "Uniform Spatial Distribution (Bounds Based)"
-        ).strip(),
-        "glyph_max_points": int(data.get("glyph_max_points") or 750),
-        "glyph_stride": int(data.get("glyph_stride") or 10),
-        "glyph_orient": bool(data.get("glyph_orient", True)),
-        "glyph_scale_array": str(data.get("glyph_scale_array") or "none").strip(),
-        "glyph_scale_factor": str(data.get("glyph_scale_factor") or "").strip(),
-        "glyph_vector_scale_mode": str(
-            data.get("glyph_vector_scale_mode") or "Scale by Magnitude"
-        ).strip(),
-        "glyph_line_width": float(data.get("glyph_line_width") or 1.5),
-        "glyph_tip_length": float(data.get("glyph_tip_length") or 0.35),
-        "glyph_tip_radius": float(data.get("glyph_tip_radius") or 0.1),
-        "glyph_shaft_radius": float(data.get("glyph_shaft_radius") or 0.03),
-        "color_range_mode": str(data.get("color_range_mode") or "fixed").strip().lower(),
-        "use_color_range": str(data.get("color_range_mode") or "fixed").strip().lower() == "fixed",
+        "color_range_mode": normalize_color_range_mode(data.get("color_range_mode")),
+        "use_color_range": normalize_color_range_mode(data.get("color_range_mode")) == "custom",
         "color_range": parse_number_list(data["color_range"]),
-        "mesh_regions": parse_string_list(data["mesh_regions"]),
-        "angle_mode": str(data["angle_mode"]).strip(),
-        "angles_deg": parse_number_list(data["angles_deg"]),
-        "slice_origin": parse_number_list(data["slice_origin"]),
-        "rotation_axis": str(data["rotation_axis"]).strip().upper(),
-        "roi_mode": str(
-            data.get("roi_mode") or ("clip_box" if data.get("use_box_clip") else "full")
-        ).strip(),
-        "use_box_clip": False,
-        "box_position": parse_number_list(data["box_position"]),
-        "box_length": parse_number_list(data["box_length"]),
-        "target_long_side": int(data["target_long_side"]),
-        "min_image_side": int(data["min_image_side"]),
-        "max_image_side": int(data["max_image_side"]),
-        "background": parse_number_list(data["background"]),
-        "show_mesh_edges": bool(data["show_mesh_edges"]),
-        "show_color_bar": bool(data["show_color_bar"]),
-        "show_orientation_axes": bool(data["show_orientation_axes"]),
-        "auto_frame_mesh": bool(data["auto_frame_mesh"]),
-        "mesh_padding": float(data["mesh_padding"]),
-        "camera_distance": float(data["camera_distance"]),
     }
 
     required_lengths = {
         "time_range": 2,
         "color_range": 2,
-        "slice_origin": 3,
-        "box_position": 3,
-        "box_length": 3,
-        "background": 3,
     }
     for key, expected in required_lengths.items():
         if len(normalized[key]) != expected:
             raise ValueError(f"{key} must contain {expected} numbers")
 
-    if not normalized["field_name"]:
-        raise ValueError("field_name is required")
-    if normalized["color_range_mode"] not in ("fixed", "auto_each", "auto_all"):
-        raise ValueError("color_range_mode must be fixed, auto_each, or auto_all")
-    if normalized["target_long_side"] < 64:
-        raise ValueError("target_long_side must be at least 64")
-    if normalized["roi_mode"] not in ("full", "camera_box", "clip_box"):
-        raise ValueError("roi_mode must be full, camera_box, or clip_box")
-    normalized["use_box_clip"] = normalized["roi_mode"] == "clip_box"
-    if normalized["glyph_max_points"] < 1:
-        raise ValueError("glyph_max_points must be at least 1")
-    if normalized["glyph_stride"] < 1:
-        raise ValueError("glyph_stride must be at least 1")
-    if normalized["glyph_line_width"] <= 0:
-        raise ValueError("glyph_line_width must be positive")
+    if normalized["color_range_mode"] not in ("state_file", "data", "custom", "all_times", "visible"):
+        raise ValueError("color_range_mode must be state_file, data, custom, all_times, or visible")
     return normalized
 
 
@@ -676,16 +579,6 @@ class PvshotApi:
         for key in RUN_OPTION_DEFAULTS:
             if key in config:
                 run_options[key] = config[key]
-        if detected["fields"] and settings["field_name"] not in detected["fields"]:
-            if "alpha.water" in detected["fields"]:
-                settings["field_name"] = "alpha.water"
-            else:
-                settings["field_name"] = detected["fields"][0]
-        if detected["vector_fields"] and settings["vector_field"] not in detected["vector_fields"]:
-            if "U" in detected["vector_fields"]:
-                settings["vector_field"] = "U"
-            else:
-                settings["vector_field"] = detected["vector_fields"][0]
         if detected["times"]:
             settings["time_range"] = [detected["times"][0], detected["times"][-1]]
         return {
@@ -744,6 +637,8 @@ class PvshotApi:
     def save_settings(self, settings):
         config = load_config()
         run_options = normalize_run_options(settings)
+        for key in OBSOLETE_CONFIG_KEYS:
+            config.pop(key, None)
         for key, value in run_options.items():
             config[key] = value
         config["screenshot_settings"] = normalize_settings(settings)
@@ -790,10 +685,9 @@ class PvshotApi:
         with self._lock:
             save_result = self.save_settings(settings)
             config = save_result["config"]
-            style_source = config.get("style_source", "generated")
             batch_enabled = bool(config.get("batch_enabled"))
 
-            if style_source == "pvsm" and batch_enabled:
+            if batch_enabled:
                 prepared = self.prepare_batch_cases(
                     config.get("batch_case_root", ""),
                     config.get("output_root") or output_dir,
@@ -917,6 +811,13 @@ HTML = r"""
       color: var(--text);
       background: #fff;
     }
+    #pvsmStateFile {
+      direction: rtl;
+      text-overflow: ellipsis;
+    }
+    #pvsmStateFile:focus {
+      direction: ltr;
+    }
     textarea {
       min-height: 68px;
       resize: vertical;
@@ -973,24 +874,91 @@ HTML = r"""
     .checkrow input { width: auto; }
     .vector-options[hidden] { display: none; }
     .conditional[hidden] { display: none; }
-    .roi-preview {
-      margin-top: 10px;
+    .collapsible-section { overflow: hidden; }
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      margin: 0 0 12px;
+    }
+    .collapsible-header h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .collapsible-icon {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .collapsible-section.collapsed .collapsible-icon {
+      transform: rotate(-90deg);
+    }
+    .collapsible-content {
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s ease;
+      max-height: 600px;
+      opacity: 1;
+    }
+    .collapsible-section.collapsed .collapsible-content {
+      max-height: 0;
+      opacity: 0;
+    }
+    .label-help {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .help-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: help;
+    }
+    .help-tip:focus {
+      outline: 2px solid rgba(37, 99, 235, 0.25);
+      outline-offset: 2px;
+    }
+    .help-tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      z-index: 10;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%);
+      width: min(420px, 80vw);
+      padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #f8fafc;
-      overflow: hidden;
-    }
-    .roi-preview svg {
-      display: block;
-      width: 100%;
-      height: 230px;
-    }
-    .roi-note {
-      padding: 8px 10px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
+      background: #111827;
+      color: #f8fafc;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
       font-size: 12px;
-      line-height: 1.35;
+      font-weight: 400;
+      line-height: 1.45;
+      white-space: pre-line;
+      text-align: left;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.12s ease, visibility 0.12s ease;
+    }
+    .help-tip:hover::after,
+    .help-tip:focus::after {
+      opacity: 1;
+      visibility: visible;
     }
     .facts {
       display: grid;
@@ -1057,48 +1025,40 @@ HTML = r"""
       </section>
       <section>
         <h2>State Template</h2>
-        <label title="Generated pipeline 使用本 GUI 参数创建 ParaView 管线；ParaView state file 会加载 .pvsm 并复用其中样式。">Style source</label>
-        <select id="styleSource" title="Generated pipeline 使用本 GUI 参数创建 ParaView 管线；ParaView state file 会加载 .pvsm 并复用其中样式。">
-          <option value="generated">Generated pipeline</option>
-          <option value="pvsm">ParaView state file</option>
-        </select>
+        <input id="styleSource" type="hidden" value="pvsm">
+        <input id="fieldPolicy" type="hidden" value="state">
+        <input id="stateScalarFilterPolicy" type="hidden" value="warn">
         <div id="pvsmOptions">
           <label title="ParaView 保存的 .pvsm state file。建议从代表性 case 调好样式后保存。">ParaView state file</label>
           <div class="row">
             <input id="pvsmStateFile" spellcheck="false" title="ParaView 保存的 .pvsm state file。建议从代表性 case 调好样式后保存。">
             <button onclick="browsePvsm()">Browse</button>
           </div>
-          <label title="Use state coloring 保留 .pvsm 中的着色字段和色表；Override field 才使用 GUI 的 Field/Component 覆盖。">Field policy</label>
-          <select id="fieldPolicy" title="Use state coloring 保留 .pvsm 中的着色字段和色表；Override field 才使用 GUI 的 Field/Component 覆盖。">
-            <option value="state">Use state coloring</option>
-            <option value="override">Override field</option>
-          </select>
-          <label title="检查 .pvsm 中可见的 Scalar Clip、Threshold、Contour 是否由场变量改变几何。Plane/Box 等几何 Clip 不会拦截；Auto stop 会在 Override field 时停止；Warn only 只打印警告；Allow 不拦截。">Scalar geometry filters</label>
-          <select id="stateScalarFilterPolicy" title="检查 .pvsm 中可见的 Scalar Clip、Threshold、Contour 是否由场变量改变几何。Plane/Box 等几何 Clip 不会拦截；Auto stop 会在 Override field 时停止；Warn only 只打印警告；Allow 不拦截。">
-            <option value="auto">Auto stop</option>
-            <option value="warn">Warn only</option>
-            <option value="allow">Allow</option>
-          </select>
         </div>
       </section>
-      <section id="batchSection">
-        <h2>Batch Cases</h2>
-        <label title="启用后从父文件夹递归查找多个 OpenFOAM case，并按同一个 .pvsm 批量截图。"><input id="batchEnabled" type="checkbox" title="启用后从父文件夹递归查找多个 OpenFOAM case，并按同一个 .pvsm 批量截图。"> Enable batch</label>
-        <label title="包含多个 OpenFOAM case 的父文件夹。程序会递归寻找 constant/polyMesh 与 system/controlDict。">Batch case root</label>
-        <div class="row">
-          <input id="batchCaseRoot" spellcheck="false" title="包含多个 OpenFOAM case 的父文件夹。程序会递归寻找 constant/polyMesh 与 system/controlDict。">
-          <button onclick="browseBatchRoot()">Browse</button>
+      <section id="batchSection" class="collapsible-section collapsed">
+        <div class="collapsible-header" onclick="toggleBatchSection()">
+          <h2>Batch Cases</h2>
+          <span class="collapsible-icon">&#9662;</span>
         </div>
-        <label title="多 case 输出根目录。实际输出为 output_root/case_name/field_name/*.png。">Output root</label>
-        <div class="row">
-          <input id="outputRoot" spellcheck="false" title="多 case 输出根目录。实际输出为 output_root/case_name/field_name/*.png。">
-          <button onclick="browseOutputRoot()">Browse</button>
-        </div>
-        <div class="actions">
-          <button onclick="prepareBatch()">Scan / Prepare Batch</button>
-        </div>
-        <div class="facts">
-          <div class="fact">Batch cases: <strong id="batchSummary">-</strong></div>
+        <div class="collapsible-content">
+          <label title="启用后从父文件夹递归查找多个 OpenFOAM case，并按同一个 .pvsm 批量截图。"><input id="batchEnabled" type="checkbox" title="启用后从父文件夹递归查找多个 OpenFOAM case，并按同一个 .pvsm 批量截图。"> Enable batch</label>
+          <label title="包含多个 OpenFOAM case 的父文件夹。程序会递归寻找 constant/polyMesh 与 system/controlDict。">Batch case root</label>
+          <div class="row">
+            <input id="batchCaseRoot" spellcheck="false" title="包含多个 OpenFOAM case 的父文件夹。程序会递归寻找 constant/polyMesh 与 system/controlDict。">
+            <button onclick="browseBatchRoot()">Browse</button>
+          </div>
+          <label title="多 case 输出根目录。实际输出为 output_root/case_name/field_name/*.png。">Output root</label>
+          <div class="row">
+            <input id="outputRoot" spellcheck="false" title="多 case 输出根目录。实际输出为 output_root/case_name/field_name/*.png。">
+            <button onclick="browseOutputRoot()">Browse</button>
+          </div>
+          <div class="actions">
+            <button onclick="prepareBatch()">Scan / Prepare Batch</button>
+          </div>
+          <div class="facts">
+            <div class="fact">Batch cases: <strong id="batchSummary">-</strong></div>
+          </div>
         </div>
       </section>
       <section>
@@ -1259,7 +1219,13 @@ HTML = r"""
         </div>
         <div class="grid3">
           <div>
-            <label title="选择要截图的时间步来源：selected 使用指定时间列表；all 输出全部保存时间；stride 按间隔抽样；range 输出指定时间范围内的所有保存时间。">Time mode</label>
+            <div class="label-help">
+              <label>时间模式</label>
+              <span class="help-tip" tabindex="0" aria-label="时间模式说明" data-tip="selected：使用下方指定的物理时间列表。
+all：输出所有已保存的时间步。
+stride：按固定间隔抽样输出。
+range：只输出指定时间范围内的已保存时间步。">?</span>
+            </div>
             <select id="timeMode" title="选择要截图的时间步来源：selected 使用指定时间列表；all 输出全部保存时间；stride 按间隔抽样；range 输出指定时间范围内的所有保存时间。">
               <option value="selected">selected</option>
               <option value="all">all</option>
@@ -1300,16 +1266,25 @@ HTML = r"""
         </div>
         <div class="grid3">
           <div>
-            <label title="色标范围策略。Manual range 使用用户填写的固定范围；Single-frame auto 每张图单独自适应；Unified auto 先扫描所选时间/角度/批处理 case，再用统一范围，适合对比。">Color range mode</label>
-            <select id="colorRangeMode" title="色标范围策略。Manual range 使用用户填写的固定范围；Single-frame auto 每张图单独自适应；Unified auto 先扫描所选时间/角度/批处理 case，再用统一范围，适合对比。">
-              <option value="fixed">Manual range</option>
-              <option value="auto_each">Single-frame auto range</option>
-              <option value="auto_all">Unified auto range</option>
+            <div class="label-help">
+              <label>色标范围模式</label>
+              <span class="help-tip" tabindex="0" aria-label="色标范围模式说明" data-tip="State file range：使用 ParaView state 文件中保存的色标范围。
+Data range：使用当前时间步的数据范围。
+Custom data range：使用手动输入的最小值和最大值。
+All times：使用所有已保存时间步统一计算出的范围。
+Visible data range：使用当前视图中可见对象的数据范围。">?</span>
+            </div>
+            <select id="colorRangeMode" title="Color range mode follows ParaView naming: state file, data, custom, all times, or visible data.">
+              <option value="state_file">State file range</option>
+              <option value="data">Data range</option>
+              <option value="custom">Custom data range</option>
+              <option value="all_times">All times</option>
+              <option value="visible">Visible data range</option>
             </select>
           </div>
           <div id="colorRangeGroup">
-            <label title="手动色标范围，例如 alpha.water 通常为 0, 1。仅当 Color range mode 为 Manual range 时生效。">Manual range</label>
-            <input id="colorRange" spellcheck="false" title="手动色标范围，例如 alpha.water 通常为 0, 1。仅当 Color range mode 为 Manual range 时生效。">
+            <label title="Custom color range, for example 0, 100000. Only used by Custom data range.">Custom range</label>
+            <input id="colorRange" spellcheck="false" title="Custom color range, for example 0, 100000. Only used by Custom data range.">
           </div>
           <div>
             <label title="ParaView OpenFOAMReader 中要读取的网格区域。普通单区域 case 通常是 internalMesh；多区域 case 可填写多个，用逗号分隔。">Mesh regions</label>
@@ -1354,41 +1329,6 @@ HTML = r"""
           </div>
         </div>
 
-        <div class="checkrow">
-          <label title="启用后显示网格边线，适合检查网格；关闭后只显示平滑色块。"><input id="showMeshEdges" type="checkbox" title="启用后显示网格边线，适合检查网格；关闭后只显示平滑色块。"> Mesh edges</label>
-          <label title="启用后在图片中显示 ParaView 色标；如果只想要网格区域本身，建议关闭。"><input id="showColorBar" type="checkbox" title="启用后在图片中显示 ParaView 色标；如果只想要网格区域本身，建议关闭。"> Color bar</label>
-          <label title="启用后显示左下角三维方向轴；用于调试视角，正式导图一般关闭。"><input id="showAxes" type="checkbox" title="启用后显示左下角三维方向轴；用于调试视角，正式导图一般关闭。"> Axes</label>
-          <label title="启用后根据切片几何 bounds 或 ROI box 自动设置相机和输出比例，推荐保持开启。"><input id="autoFrame" type="checkbox" title="启用后根据切片几何 bounds 或 ROI box 自动设置相机和输出比例，推荐保持开启。"> Auto frame</label>
-        </div>
-
-        <div class="grid3">
-          <div>
-            <label title="局部区域输出方式。Full view 输出完整切片；Zoom to box 只缩放相机不裁剪数据；Clip to box 先按盒子裁剪数据再渲染。">ROI mode</label>
-            <select id="roiMode" title="局部区域输出方式。Full view 输出完整切片；Zoom to box 只缩放相机不裁剪数据；Clip to box 先按盒子裁剪数据再渲染。">
-              <option value="full">Full view</option>
-              <option value="camera_box">Zoom to box</option>
-              <option value="clip_box">Clip to box</option>
-            </select>
-          </div>
-          <div>
-            <label title="把 ROI min/max 自动填成当前检测到的完整网格 bounds。">ROI preset</label>
-            <button onclick="fillRoiWithMeshBounds()" title="把 ROI min/max 自动填成当前检测到的完整网格 bounds。">Use Mesh Bounds</button>
-          </div>
-        </div>
-        <div id="roiBoxGroup" class="grid2">
-          <div>
-            <label title="ROI 最小点坐标，格式为 x1, y1, z1。Zoom to box 和 Clip to box 时生效。">ROI min point</label>
-            <input id="roiMinPoint" spellcheck="false" title="ROI 最小点坐标，格式为 x1, y1, z1。Zoom to box 和 Clip to box 时生效。">
-          </div>
-          <div>
-            <label title="ROI 最大点坐标，格式为 x2, y2, z2。程序会自动换算为 ParaView Box 的 Position 和 Length。">ROI max point</label>
-            <input id="roiMaxPoint" spellcheck="false" title="ROI 最大点坐标，格式为 x2, y2, z2。程序会自动换算为 ParaView Box 的 Position 和 Length。">
-          </div>
-        </div>
-        <div class="roi-preview">
-          <svg id="roiSvg" viewBox="0 0 600 230" role="img" aria-label="ROI coordinate preview"></svg>
-          <div id="roiPreviewNote" class="roi-note">Detect a case to show mesh bounds and ROI preview.</div>
-        </div>
       </section>
       <section>
         <h2>Log</h2>
@@ -1408,6 +1348,19 @@ HTML = r"""
     function log(text) { $('log').textContent = text || ''; }
     function csv(value) { return Array.isArray(value) ? value.join(', ') : (value || ''); }
 
+    function normalizeColorRangeMode(value) {
+      const aliases = {
+        fixed: 'custom',
+        manual: 'custom',
+        auto_each: 'data',
+        auto_all: 'all_times',
+        state: 'state_file',
+        state_range: 'state_file'
+      };
+      const key = String(value || 'custom').trim().toLowerCase();
+      return aliases[key] || key;
+    }
+
     function parseNumberList(value) {
       if (Array.isArray(value)) return value.map(Number);
       return String(value || '')
@@ -1421,102 +1374,9 @@ HTML = r"""
       return Number(value).toPrecision(6).replace(/\.?0+$/, '');
     }
 
-    function roiPointsFromSettings(settings) {
-      const position = parseNumberList(settings.box_position || [0, 0, 0]);
-      const length = parseNumberList(settings.box_length || [0, 0, 0]);
-      const minPoint = [0, 1, 2].map(i => Number(position[i] || 0));
-      const maxPoint = [0, 1, 2].map(i => minPoint[i] + Number(length[i] || 0));
-      return { minPoint, maxPoint };
-    }
-
-    function roiBoxFromInputs() {
-      const minRaw = parseNumberList($('roiMinPoint').value);
-      const maxRaw = parseNumberList($('roiMaxPoint').value);
-      const minPoint = [0, 1, 2].map(i => Math.min(Number(minRaw[i] || 0), Number(maxRaw[i] || 0)));
-      const maxPoint = [0, 1, 2].map(i => Math.max(Number(minRaw[i] || 0), Number(maxRaw[i] || 0)));
-      return {
-        position: minPoint,
-        length: [0, 1, 2].map(i => maxPoint[i] - minPoint[i]),
-        minPoint,
-        maxPoint,
-      };
-    }
-
     function meshBoundsText(bounds) {
       if (!bounds || !bounds.min || !bounds.max) return '-';
       return `x ${fmt(bounds.min[0])}..${fmt(bounds.max[0])}, y ${fmt(bounds.min[1])}..${fmt(bounds.max[1])}, z ${fmt(bounds.min[2])}..${fmt(bounds.max[2])}`;
-    }
-
-    function drawRoiPreview() {
-      const svg = $('roiSvg');
-      const note = $('roiPreviewNote');
-      const detected = state.detected || {};
-      const bounds = detected.mesh_bounds;
-      if (!bounds || !bounds.min || !bounds.max) {
-        svg.innerHTML = '';
-        note.textContent = 'Detect a case to show mesh bounds and ROI preview.';
-        return;
-      }
-
-      const bmin = bounds.min.map(Number);
-      const bmax = bounds.max.map(Number);
-      const roi = roiBoxFromInputs();
-      const xmin = bmin[0], xmax = bmax[0], ymin = bmin[1], ymax = bmax[1];
-      const width = Math.max(xmax - xmin, 1e-12);
-      const height = Math.max(ymax - ymin, 1e-12);
-      const margin = 34;
-      const canvasW = 600, canvasH = 230;
-      const areaW = canvasW - margin * 2;
-      const areaH = canvasH - margin * 2;
-      const scale = Math.min(areaW / width, areaH / height);
-      const plotW = width * scale;
-      const plotH = height * scale;
-      const ox = (canvasW - plotW) / 2;
-      const oy = (canvasH - plotH) / 2;
-      const px = x => ox + (x - xmin) * scale;
-      const py = y => oy + plotH - (y - ymin) * scale;
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-      const rx1 = clamp(px(roi.minPoint[0]), ox, ox + plotW);
-      const rx2 = clamp(px(roi.maxPoint[0]), ox, ox + plotW);
-      const ry1 = clamp(py(roi.maxPoint[1]), oy, oy + plotH);
-      const ry2 = clamp(py(roi.minPoint[1]), oy, oy + plotH);
-      const originInside = 0 >= xmin && 0 <= xmax && 0 >= ymin && 0 <= ymax;
-      const opx = clamp(px(0), ox, ox + plotW);
-      const opy = clamp(py(0), oy, oy + plotH);
-      const xAxisEnd = clamp(opx + 54, ox, ox + plotW);
-      const yAxisEnd = clamp(opy - 54, oy, oy + plotH);
-
-      let originMarkup = '';
-      if (originInside) {
-        originMarkup = `
-          <circle cx="${opx}" cy="${opy}" r="4" fill="#111827"></circle>
-          <text x="${opx + 7}" y="${opy - 7}" font-size="11" fill="#111827">O</text>
-          <line x1="${opx}" y1="${opy}" x2="${xAxisEnd}" y2="${opy}" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow)"></line>
-          <text x="${xAxisEnd + 5}" y="${opy + 4}" font-size="11" fill="#dc2626">X</text>
-          <line x1="${opx}" y1="${opy}" x2="${opx}" y2="${yAxisEnd}" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow)"></line>
-          <text x="${opx + 5}" y="${yAxisEnd - 5}" font-size="11" fill="#16a34a">Y</text>
-          <circle cx="${opx - 18}" cy="${opy - 18}" r="8" fill="none" stroke="#2563eb" stroke-width="2"></circle>
-          <circle cx="${opx - 18}" cy="${opy - 18}" r="2.4" fill="#2563eb"></circle>
-          <text x="${opx - 13}" y="${opy - 22}" font-size="11" fill="#2563eb">Z</text>
-        `;
-      }
-
-      svg.innerHTML = `
-        <defs>
-          <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
-          </marker>
-        </defs>
-        <rect x="0" y="0" width="${canvasW}" height="${canvasH}" fill="#f8fafc"></rect>
-        <rect x="${ox}" y="${oy}" width="${plotW}" height="${plotH}" fill="#dbeafe" stroke="#1f2937" stroke-width="1.5"></rect>
-        <rect x="${Math.min(rx1, rx2)}" y="${Math.min(ry1, ry2)}" width="${Math.abs(rx2 - rx1)}" height="${Math.abs(ry2 - ry1)}" fill="rgba(245, 158, 11, 0.28)" stroke="#d97706" stroke-width="2"></rect>
-        ${originMarkup}
-        <text x="${ox}" y="${oy - 10}" font-size="11" fill="#475569">XY projection of mesh bounds</text>
-        <text x="${ox}" y="${oy + plotH + 18}" font-size="11" fill="#475569">x ${fmt(xmin)} .. ${fmt(xmax)}</text>
-        <text x="${ox + plotW - 105}" y="${oy + plotH + 18}" font-size="11" fill="#475569">y ${fmt(ymin)} .. ${fmt(ymax)}</text>
-      `;
-      note.textContent = `Blue rectangle is mesh bounds. Orange rectangle is ROI. Z range: mesh ${fmt(bmin[2])}..${fmt(bmax[2])}, ROI ${fmt(roi.minPoint[2])}..${fmt(roi.maxPoint[2])}.`;
     }
 
     function fieldClass(fieldName) {
@@ -1569,6 +1429,10 @@ HTML = r"""
       select.value = choices.some(choice => choice.value === selected) ? selected : '';
     }
 
+    function toggleBatchSection() {
+      document.getElementById('batchSection').classList.toggle('collapsed');
+    }
+
     function updateTimeInputs() {
       const mode = $('timeMode').value;
       $('selectedTimesGroup').hidden = mode !== 'selected';
@@ -1576,31 +1440,40 @@ HTML = r"""
       $('strideGroup').hidden = mode !== 'stride';
     }
 
-    function updateRoiOptions() {
-      $('roiBoxGroup').hidden = $('roiMode').value === 'full';
-      drawRoiPreview();
-    }
-
     function updateColorRangeOptions() {
-      $('colorRangeGroup').hidden = $('colorRangeMode').value !== 'fixed';
+      $('colorRangeGroup').hidden = $('colorRangeMode').value !== 'custom';
     }
 
-    function fillRoiWithMeshBounds() {
-      const detected = state.detected || {};
-      const bounds = detected.mesh_bounds;
-      if (!bounds || !bounds.min || !bounds.max) return;
-      $('roiMinPoint').value = csv(bounds.min);
-      $('roiMaxPoint').value = csv(bounds.max);
-      drawRoiPreview();
+    function hideControlGroup(id) {
+      const element = $(id);
+      if (!element) return;
+      const group = element.closest('.grid2 > div, .grid3 > div') || element;
+      group.hidden = true;
+    }
+
+    function hideLegacyStateControls() {
+      [
+        'visualizationType',
+        'targetLongSide',
+        'fieldName',
+        'fieldAssociation',
+        'fieldComponent',
+        'meshRegions',
+        'angleMode',
+        'rotationAxis',
+        'anglesDeg',
+        'sliceOrigin',
+        'cameraDistance',
+        'meshPadding'
+      ].forEach(hideControlGroup);
+
+      const vectorOptions = $('vectorOptions');
+      if (vectorOptions) vectorOptions.hidden = true;
     }
 
     function readSettings() {
-      const roi = roiBoxFromInputs();
       return {
-        style_source: $('styleSource').value,
         pvsm_state_file: $('pvsmStateFile').value,
-        field_policy: $('fieldPolicy').value,
-        state_scalar_filter_policy: $('stateScalarFilterPolicy').value,
         batch_enabled: $('batchEnabled').checked,
         batch_case_root: $('batchCaseRoot').value,
         output_root: $('outputRoot').value,
@@ -1608,50 +1481,9 @@ HTML = r"""
         selected_times: $('selectedTimes').value,
         time_stride: Number($('timeStride').value || 1),
         time_range: $('timeRange').value,
-        field_name: $('fieldName').value,
-        field_association: $('fieldAssociation').value,
-        field_component: $('fieldComponent').value,
-        visualization_type: $('visualizationType').value,
-        vector_field: $('vectorField').value,
-        arrow_density: $('arrowDensity').value,
-        arrow_scale: $('arrowScale').value,
-        arrow_color: $('arrowColor').value,
-        glyph_source: $('glyphSource').value,
-        glyph_2d_shape: $('glyph2dShape').value,
-        glyph_2d_filled: $('glyph2dFilled').checked,
-        glyph_mode: $('glyphMode').value,
-        glyph_max_points: Number($('glyphMaxPoints').value || 750),
-        glyph_stride: Number($('glyphStride').value || 10),
-        glyph_orient: $('glyphOrient').checked,
-        glyph_scale_array: $('glyphScaleArray').value,
-        glyph_scale_factor: $('glyphScaleFactor').value,
-        glyph_vector_scale_mode: $('glyphVectorScaleMode').value,
-        glyph_line_width: Number($('glyphLineWidth').value || 1.5),
-        glyph_tip_length: Number($('glyphTipLength').value || 0.35),
-        glyph_tip_radius: Number($('glyphTipRadius').value || 0.1),
-        glyph_shaft_radius: Number($('glyphShaftRadius').value || 0.03),
         color_range_mode: $('colorRangeMode').value,
-        use_color_range: $('colorRangeMode').value === 'fixed',
+        use_color_range: $('colorRangeMode').value === 'custom',
         color_range: $('colorRange').value,
-        mesh_regions: $('meshRegions').value,
-        angle_mode: $('angleMode').value,
-        angles_deg: $('anglesDeg').value,
-        slice_origin: $('sliceOrigin').value,
-        rotation_axis: $('rotationAxis').value,
-        roi_mode: $('roiMode').value,
-        use_box_clip: $('roiMode').value === 'clip_box',
-        box_position: roi.position,
-        box_length: roi.length,
-        target_long_side: Number($('targetLongSide').value || 1400),
-        min_image_side: 64,
-        max_image_side: 4096,
-        background: [1.0, 1.0, 1.0],
-        show_mesh_edges: $('showMeshEdges').checked,
-        show_color_bar: $('showColorBar').checked,
-        show_orientation_axes: $('showAxes').checked,
-        auto_frame_mesh: $('autoFrame').checked,
-        mesh_padding: Number($('meshPadding').value || 1.0),
-        camera_distance: Number($('cameraDistance').value || 0.45),
       };
     }
 
@@ -1665,10 +1497,10 @@ HTML = r"""
 
       $('caseDir').value = detected.case_dir || config.original_case_dir || config.case_dir || '';
       $('outputDir').value = config.output_dir || '';
-      $('styleSource').value = runOptions.style_source || config.style_source || 'generated';
+      $('styleSource').value = 'pvsm';
       $('pvsmStateFile').value = runOptions.pvsm_state_file || config.pvsm_state_file || '';
-      $('fieldPolicy').value = runOptions.field_policy || config.field_policy || 'state';
-      $('stateScalarFilterPolicy').value = runOptions.state_scalar_filter_policy || config.state_scalar_filter_policy || 'auto';
+      $('fieldPolicy').value = 'state';
+      $('stateScalarFilterPolicy').value = 'warn';
       $('batchEnabled').checked = !!(runOptions.batch_enabled || config.batch_enabled);
       $('batchCaseRoot').value = runOptions.batch_case_root || config.batch_case_root || '';
       $('outputRoot').value = runOptions.output_root || config.output_root || config.output_dir || '';
@@ -1684,84 +1516,16 @@ HTML = r"""
       $('boundsSummary').textContent = meshBoundsText(detected.mesh_bounds);
       $('asciiSummary').textContent = detected.path_is_ascii ? 'yes' : 'no, will copy to ASCII work folder';
 
-      const currentField = settings.field_name || 'alpha.water';
-      const currentVectorField = settings.vector_field || 'U';
-      const fallbackFields = ['alpha.water', 'U', 'p', 'p_rgh', 'T'];
-      const fieldChoices = Array.from(new Set([
-        ...(detected.fields || []),
-        currentField,
-        ...fallbackFields
-      ].filter(Boolean)));
-      $('fieldName').innerHTML = '';
-      fieldChoices.forEach(field => {
-        const option = document.createElement('option');
-        option.value = field;
-        option.textContent = field;
-        $('fieldName').appendChild(option);
-      });
-      const vectorChoices = Array.from(new Set([
-        ...(detected.vector_fields || []),
-        currentVectorField,
-        'U'
-      ].filter(Boolean)));
-      $('vectorField').innerHTML = '';
-      vectorChoices.forEach(field => {
-        const option = document.createElement('option');
-        option.value = field;
-        option.textContent = field;
-        $('vectorField').appendChild(option);
-      });
-
       $('timeMode').value = settings.time_mode || 'selected';
       $('selectedTimes').value = csv(settings.selected_times);
       $('timeStride').value = settings.time_stride || 10;
       $('timeRange').value = csv(settings.time_range);
       updateTimeInputs();
-      $('targetLongSide').value = settings.target_long_side || 1400;
-      $('fieldName').value = currentField;
-      $('fieldAssociation').value = settings.field_association || 'CELLS';
-      updateComponentChoices(settings.field_component || '');
-      $('visualizationType').value = settings.visualization_type || 'scalar';
-      $('vectorField').value = currentVectorField;
-      $('arrowDensity').value = settings.arrow_density || 'medium';
-      $('arrowScale').value = settings.arrow_scale || 'auto';
-      $('arrowColor').value = settings.arrow_color || 'speed';
-      $('glyphSource').value = settings.glyph_source || '2d_glyph';
-      $('glyph2dShape').value = settings.glyph_2d_shape || 'Arrow';
-      $('glyph2dFilled').checked = !!settings.glyph_2d_filled;
-      $('glyphMode').value = settings.glyph_mode || 'Uniform Spatial Distribution (Bounds Based)';
-      $('glyphMaxPoints').value = settings.glyph_max_points || 750;
-      $('glyphStride').value = settings.glyph_stride || 10;
-      $('glyphOrient').checked = settings.glyph_orient !== false;
-      $('glyphScaleArray').value = settings.glyph_scale_array || 'none';
-      $('glyphScaleFactor').value = settings.glyph_scale_factor || '';
-      $('glyphVectorScaleMode').value = settings.glyph_vector_scale_mode || 'Scale by Magnitude';
-      $('glyphLineWidth').value = settings.glyph_line_width || 1.5;
-      $('glyphTipLength').value = settings.glyph_tip_length || 0.35;
-      $('glyphTipRadius').value = settings.glyph_tip_radius || 0.1;
-      $('glyphShaftRadius').value = settings.glyph_shaft_radius || 0.03;
-      updateVectorOptions();
-      $('colorRangeMode').value = settings.color_range_mode || (settings.use_color_range ? 'fixed' : 'auto_each');
+      $('colorRangeMode').value = normalizeColorRangeMode(settings.color_range_mode || (settings.use_color_range ? 'custom' : 'data'));
       $('colorRange').value = csv(settings.color_range);
       updateColorRangeOptions();
-      $('meshRegions').value = csv(settings.mesh_regions);
-      $('angleMode').value = settings.angle_mode || 'wedge_midplane';
-      $('rotationAxis').value = settings.rotation_axis || 'Y';
-      $('anglesDeg').value = csv(settings.angles_deg);
-      $('sliceOrigin').value = csv(settings.slice_origin);
-      $('cameraDistance').value = settings.camera_distance || 0.45;
-      $('meshPadding').value = settings.mesh_padding || 1.0;
-      $('showMeshEdges').checked = !!settings.show_mesh_edges;
-      $('showColorBar').checked = !!settings.show_color_bar;
-      $('showAxes').checked = !!settings.show_orientation_axes;
-      $('autoFrame').checked = settings.auto_frame_mesh !== false;
-      $('roiMode').value = settings.roi_mode || (settings.use_box_clip ? 'clip_box' : 'full');
-      const roiPoints = roiPointsFromSettings(settings);
-      $('roiMinPoint').value = csv(roiPoints.minPoint);
-      $('roiMaxPoint').value = csv(roiPoints.maxPoint);
-      updateRoiOptions();
-      drawRoiPreview();
       updateStyleOptions();
+      hideLegacyStateControls();
     }
 
     async function refresh() {
@@ -1785,13 +1549,9 @@ HTML = r"""
     }
 
     function updateStyleOptions() {
-      const isPvsm = $('styleSource').value === 'pvsm';
-      $('pvsmOptions').hidden = !isPvsm;
-      $('batchSection').hidden = !isPvsm;
-      const useStateColoring = isPvsm && $('fieldPolicy').value === 'state';
-      ['fieldName', 'fieldAssociation', 'fieldComponent'].forEach(id => {
-        $(id).disabled = useStateColoring;
-      });
+      $('pvsmOptions').hidden = false;
+      $('batchSection').hidden = false;
+      hideLegacyStateControls();
     }
 
     async function browseCase() {
@@ -1897,16 +1657,9 @@ HTML = r"""
 
     window.addEventListener('pywebviewready', refresh);
     window.addEventListener('DOMContentLoaded', () => {
-      $('styleSource').addEventListener('change', updateStyleOptions);
-      $('fieldPolicy').addEventListener('change', updateStyleOptions);
-      $('visualizationType').addEventListener('change', updateVectorOptions);
-      $('glyphSource').addEventListener('change', updateVectorOptions);
       $('colorRangeMode').addEventListener('change', updateColorRangeOptions);
       $('timeMode').addEventListener('change', updateTimeInputs);
-      $('roiMode').addEventListener('change', updateRoiOptions);
-      $('roiMinPoint').addEventListener('input', drawRoiPreview);
-      $('roiMaxPoint').addEventListener('input', drawRoiPreview);
-      $('fieldName').addEventListener('change', () => updateComponentChoices(''));
+      hideLegacyStateControls();
     });
   </script>
 </body>

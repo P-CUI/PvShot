@@ -39,12 +39,7 @@ def load_runtime_config():
     with CONFIG_FILE.open("r", encoding="utf-8-sig") as handle:
         config = json.load(handle)
 
-    style_source = str(config.get("style_source", "generated")).lower()
-    required = (
-        ["pvsm_state_file"]
-        if style_source == "pvsm"
-        else ["case_dir", "case_file", "output_dir"]
-    )
+    required = ["pvsm_state_file"]
     missing = [key for key in required if not config.get(key)]
     if missing:
         raise RuntimeError(
@@ -56,14 +51,10 @@ def load_runtime_config():
 
 RUNTIME_CONFIG = load_runtime_config()
 SCREENSHOT_SETTINGS = RUNTIME_CONFIG.get("screenshot_settings", {})
-STYLE_SOURCE = str(RUNTIME_CONFIG.get("style_source", "generated")).lower()
+STYLE_SOURCE = "pvsm"
 PVSM_STATE_FILE = Path(RUNTIME_CONFIG.get("pvsm_state_file", ""))
-FIELD_POLICY = str(RUNTIME_CONFIG.get("field_policy", "state")).lower()
-STATE_SCALAR_FILTER_POLICY = str(
-    RUNTIME_CONFIG.get("state_scalar_filter_policy", "auto")
-).lower()
-if STATE_SCALAR_FILTER_POLICY not in ("auto", "warn", "allow"):
-    raise ValueError("state_scalar_filter_policy must be auto, warn, or allow")
+FIELD_POLICY = "override"
+STATE_SCALAR_FILTER_POLICY = "warn"
 BATCH_CASES = list(RUNTIME_CONFIG.get("batch_cases") or [])
 OUTPUT_ROOT = Path(RUNTIME_CONFIG.get("output_root") or RUNTIME_CONFIG.get("output_dir", ""))
 CASE_DIR = Path(RUNTIME_CONFIG.get("case_dir", "."))
@@ -107,6 +98,45 @@ def config_string_list(name, default):
         parts = [str(part).strip() for part in value if str(part).strip()]
     return parts or None
 
+
+def normalize_color_range_mode(value):
+    aliases = {
+        "fixed": "custom",
+        "manual": "custom",
+        "manual_range": "custom",
+        "auto_each": "data",
+        "single-frame": "data",
+        "single_frame": "data",
+        "single_frame_auto": "data",
+        "auto_all": "all_times",
+        "unified": "all_times",
+        "unified_auto": "all_times",
+        "state": "state_file",
+        "state_range": "state_file",
+        "pvsm": "state_file",
+    }
+    mode = str(value or "custom").strip().lower()
+    return aliases.get(mode, mode)
+
+
+def configured_state_color_field(default="p"):
+    try:
+        root = ET.parse(str(PVSM_STATE_FILE)).getroot()
+    except Exception:
+        return default
+    for prop in root.iter():
+        if prop.tag != "Property" or prop.attrib.get("name") != "ColorArrayName":
+            continue
+        values = [
+            element.attrib.get("value", "")
+            for element in prop
+            if element.tag == "Element" and element.attrib.get("value", "")
+        ]
+        for value in reversed(values):
+            if value and value not in ("0", "1"):
+                return value
+    return default
+
 # Time selection:
 #   "selected" - use SELECTED_TIMES, snapped to the nearest available time.
 #   "all"      - capture every saved OpenFOAM time folder.
@@ -119,8 +149,9 @@ SELECTED_TIMES = config_float_list(
 TIME_STRIDE = int(config_value("time_stride", 10))
 TIME_RANGE = config_float_list("time_range", [0.0, 0.00699], count=2)
 
-# This case has fields: U, T, p_rgh, p, alpha.water.
-FIELD_NAME = str(config_value("field_name", "alpha.water"))
+# The GUI no longer exposes field override; internally we reapply the field
+# stored in the state file to preserve the old no-background rendering path.
+FIELD_NAME = str(config_value("field_name", configured_state_color_field()))
 FIELD_ASSOCIATION = str(config_value("field_association", "CELLS"))
 FIELD_COMPONENT = config_value("field_component", None)
 if FIELD_COMPONENT == "":
@@ -144,11 +175,11 @@ GLYPH_LINE_WIDTH = float(config_value("glyph_line_width", 1.5))
 GLYPH_TIP_LENGTH = float(config_value("glyph_tip_length", 0.35))
 GLYPH_TIP_RADIUS = float(config_value("glyph_tip_radius", 0.1))
 GLYPH_SHAFT_RADIUS = float(config_value("glyph_shaft_radius", 0.03))
-COLOR_RANGE_MODE = str(
-    config_value("color_range_mode", "fixed" if config_bool("use_color_range", True) else "auto_each")
-).lower()
+COLOR_RANGE_MODE = normalize_color_range_mode(
+    config_value("color_range_mode", "custom" if config_bool("use_color_range", True) else "data")
+)
 COLOR_RANGE = config_float_list("color_range", [0.0, 1.0], count=2)
-VALID_COLOR_RANGE_MODES = ("fixed", "auto_each", "auto_all")
+VALID_COLOR_RANGE_MODES = ("state_file", "data", "custom", "all_times", "visible")
 if COLOR_RANGE_MODE not in VALID_COLOR_RANGE_MODES:
     raise ValueError(
         "color_range_mode must be one of: " + ", ".join(VALID_COLOR_RANGE_MODES)
@@ -167,25 +198,22 @@ ROTATION_AXIS = str(config_value("rotation_axis", "Y"))
 
 # Optional coordinate clip before slicing. The geometry is about:
 #   x: 0..0.13889, y: 0..0.27778, z: -0.00139..0.00139
-LEGACY_USE_BOX_CLIP = config_bool("use_box_clip", False)
-ROI_MODE = str(
-    config_value("roi_mode", "clip_box" if LEGACY_USE_BOX_CLIP else "full")
-).lower()
-USE_BOX_CLIP = ROI_MODE == "clip_box"
+ROI_MODE = "full"
+USE_BOX_CLIP = False
 BOX_POSITION = config_float_list("box_position", [0.0, 0.0, -0.002], count=3)
 BOX_LENGTH = config_float_list("box_length", [0.14, 0.28, 0.004], count=3)
 
 # Image/view settings. Image dimensions are derived from the slice geometry, so
 # screenshots are framed by the mesh bounds instead of cropped after rendering.
-TARGET_LONG_SIDE = int(config_value("target_long_side", 1400))
+TARGET_LONG_SIDE = 1400
 MIN_IMAGE_SIDE = int(config_value("min_image_side", 64))
 MAX_IMAGE_SIDE = int(config_value("max_image_side", 4096))
 BACKGROUND = config_float_list("background", [1.0, 1.0, 1.0], count=3)
 SHOW_MESH_EDGES = config_bool("show_mesh_edges", False)
 SHOW_COLOR_BAR = config_bool("show_color_bar", False)
-SHOW_ORIENTATION_AXES = config_bool("show_orientation_axes", False)
+SHOW_ORIENTATION_AXES = False
 AUTO_FRAME_MESH = config_bool("auto_frame_mesh", True)
-MESH_PADDING = float(config_value("mesh_padding", 1.0))
+MESH_PADDING = 1.0
 CAMERA_DISTANCE = float(config_value("camera_distance", 0.45))
 
 
@@ -385,7 +413,7 @@ def configure_display(slice_filter, view, shared_color_range=None, single_frame_
     else:
         ColorBy(display, (FIELD_ASSOCIATION.upper(), FIELD_NAME))
 
-    if COLOR_RANGE_MODE == "auto_each":
+    if COLOR_RANGE_MODE in ("data", "visible"):
         value_range = single_frame_range or range_for_slice(slice_filter)
         if value_range:
             rescale_transfer_functions(FIELD_NAME, value_range, display)
@@ -479,12 +507,14 @@ def rescale_transfer_functions(field_name, range_values, display=None):
 
 
 def rescale_display_color_for_field(display, field_name, shared_color_range=None):
-    if COLOR_RANGE_MODE == "fixed":
+    if COLOR_RANGE_MODE == "custom":
         return rescale_transfer_functions(field_name, COLOR_RANGE, display)
-    elif COLOR_RANGE_MODE == "auto_all":
+    elif COLOR_RANGE_MODE == "all_times":
         if not shared_color_range:
-            raise RuntimeError("Color range mode auto_all requires a shared color range")
+            raise RuntimeError("Color range mode all_times requires a shared color range")
         return rescale_transfer_functions(field_name, shared_color_range, display)
+    elif COLOR_RANGE_MODE == "state_file":
+        return None
     else:
         if display is not None:
             display.RescaleTransferFunctionToDataRange(True, False)
@@ -794,11 +824,10 @@ def screenshot_name(case_file, time_index, time_value, angle_index, angle_deg):
 
 
 def state_screenshot_name(case_name, time_index, time_value, field_label):
-    roi_suffix = "" if ROI_MODE == "full" else f"_roi_{safe_path_part(ROI_MODE)}"
     return (
         f"{safe_path_part(case_name)}_frame{time_index:04d}_"
         f"t{time_token(time_value)}_"
-        f"{safe_path_part(field_label)}_state{roi_suffix}.png"
+        f"{safe_path_part(field_label)}_state.png"
     )
 
 
@@ -885,16 +914,31 @@ def configure_state_camera_to_bounds(view, bounds):
     return image_size
 
 
-def configure_state_roi_camera(view, time_value, fallback_source=None):
-    if ROI_MODE == "full":
-        bounds = state_visible_bounds(view, time_value, fallback_source)
-        if not bounds:
-            print("Warning: could not determine visible state bounds; falling back to state view aspect.")
-            return view_image_size_from_current_aspect(view)
-    else:
-        bounds = roi_bounds()
-
+def configure_state_visible_bounds_camera(view, time_value, fallback_source=None):
+    bounds = state_visible_bounds(view, time_value, fallback_source)
+    if not bounds:
+        print("Warning: could not determine visible state bounds; falling back to state view aspect.")
+        return view_image_size_from_current_aspect(view)
     return configure_state_camera_to_bounds(view, bounds)
+
+
+def save_state_screenshot(output_file, view, image_size):
+    # Keep exported PNGs free of the ParaView viewport background. The white
+    # background is only a fallback for ParaView builds that ignore transparency.
+    set_if_property(view, "UseColorPaletteForBackground", 0)
+    set_if_property(view, "UseGradientBackground", 0)
+    set_if_property(view, "UseTexturedBackground", 0)
+    set_if_property(view, "Background", [1.0, 1.0, 1.0])
+    set_if_property(view, "Background2", [1.0, 1.0, 1.0])
+    try:
+        SaveScreenshot(
+            str(output_file),
+            view,
+            ImageResolution=image_size,
+            TransparentBackground=1,
+        )
+    except TypeError:
+        SaveScreenshot(str(output_file), view, ImageResolution=image_size)
 
 
 def pvsm_reader_reference(state_file):
@@ -1368,6 +1412,13 @@ def override_state_field(view, shared_color_range=None, rescale=True):
                 ColorBy(display, (FIELD_ASSOCIATION.upper(), FIELD_NAME, FIELD_COMPONENT))
             else:
                 ColorBy(display, (FIELD_ASSOCIATION.upper(), FIELD_NAME))
+            set_if_property(display, "Opacity", 1.0)
+            set_if_property(display, "UseSeparateOpacityArray", 0)
+            set_if_property(display, "EnableOpacityMapping", 0)
+            try:
+                GetColorTransferFunction(FIELD_NAME).ApplyPreset("Cool to Warm", True)
+            except Exception as preset_exc:
+                print(f"Warning: could not reset color preset for {FIELD_NAME}: {preset_exc}")
             if rescale:
                 rescale_display_color(display, shared_color_range)
         except Exception as exc:
@@ -1428,20 +1479,33 @@ def apply_range_to_state_displays(view, target_field, range_values, state_color_
 
 
 def apply_state_color_range(view, state_color_field="", shared_color_range=None, time_value=None):
+    if COLOR_RANGE_MODE == "state_file":
+        return None
+
     if FIELD_POLICY == "override":
         override_state_field(
             view,
             shared_color_range,
-            rescale=COLOR_RANGE_MODE != "auto_each",
+            rescale=COLOR_RANGE_MODE in ("custom", "all_times"),
         )
-        if COLOR_RANGE_MODE == "auto_each":
-            value_range = state_visible_field_range(
-                view,
-                time_value,
-                FIELD_NAME,
-                FIELD_ASSOCIATION,
-                FIELD_COMPONENT,
-            )
+        if COLOR_RANGE_MODE in ("data", "visible"):
+            if COLOR_RANGE_MODE == "data":
+                value_range = state_data_field_range(
+                    view,
+                    time_value,
+                    FIELD_NAME,
+                    FIELD_ASSOCIATION,
+                    FIELD_COMPONENT,
+                )
+            else:
+                value_range = state_visible_field_range(
+                    view,
+                    time_value,
+                    FIELD_NAME,
+                    FIELD_ASSOCIATION,
+                    FIELD_COMPONENT,
+                    allow_pipeline_fallback=False,
+                )
             if value_range:
                 applied_range, _touched = apply_range_to_state_displays(
                     view,
@@ -1457,20 +1521,30 @@ def apply_state_color_range(view, state_color_field="", shared_color_range=None,
     target_field, target_association, target_component = state_color_range_target(
         view, state_color_field
     )
-    if COLOR_RANGE_MODE == "auto_each":
+    if COLOR_RANGE_MODE in ("data", "visible"):
         if not target_field:
             print(
                 "Warning: single-frame color range requested in state coloring mode, "
                 "but no visible colored representation was found."
             )
             return
-        value_range = state_visible_field_range(
-            view,
-            time_value,
-            target_field,
-            target_association,
-            target_component,
-        )
+        if COLOR_RANGE_MODE == "data":
+            value_range = state_data_field_range(
+                view,
+                time_value,
+                target_field,
+                target_association,
+                target_component,
+            )
+        else:
+            value_range = state_visible_field_range(
+                view,
+                time_value,
+                target_field,
+                target_association,
+                target_component,
+                allow_pipeline_fallback=False,
+            )
         if value_range:
             applied_range, _touched = apply_range_to_state_displays(
                 view,
@@ -1483,7 +1557,7 @@ def apply_state_color_range(view, state_color_field="", shared_color_range=None,
             print(f"Warning: could not compute single-frame range for {target_field}")
         return None
 
-    range_values = COLOR_RANGE if COLOR_RANGE_MODE == "fixed" else shared_color_range
+    range_values = COLOR_RANGE if COLOR_RANGE_MODE == "custom" else shared_color_range
     target_field = FIELD_NAME if FIELD_POLICY == "override" else (state_color_field or target_field)
     applied_range, touched = apply_range_to_state_displays(
         view,
@@ -1492,7 +1566,7 @@ def apply_state_color_range(view, state_color_field="", shared_color_range=None,
         state_color_field,
     )
 
-    if not touched and state_color_field and COLOR_RANGE_MODE in ("fixed", "auto_all"):
+    if not touched and state_color_field and COLOR_RANGE_MODE in ("custom", "all_times"):
         try:
             applied_range = rescale_display_color_for_field(
                 None,
@@ -1503,7 +1577,7 @@ def apply_state_color_range(view, state_color_field="", shared_color_range=None,
         except Exception as exc:
             print(f"Warning: could not apply state color range to {state_color_field}: {exc}")
 
-    if not touched and COLOR_RANGE_MODE in ("fixed", "auto_all"):
+    if not touched and COLOR_RANGE_MODE in ("custom", "all_times"):
         print(
             "Warning: color range mode requested in state coloring mode, "
             "but no visible colored representation was found."
@@ -1511,7 +1585,14 @@ def apply_state_color_range(view, state_color_field="", shared_color_range=None,
     return applied_range
 
 
-def state_visible_field_range(view, time_value, field_name="", association="", component=None):
+def state_visible_field_range(
+    view,
+    time_value,
+    field_name="",
+    association="",
+    component=None,
+    allow_pipeline_fallback=True,
+):
     ranges = []
     for display in visible_representations(view):
         if getattr(display, "Visibility", 1) == 0:
@@ -1544,8 +1625,25 @@ def state_visible_field_range(view, time_value, field_name="", association="", c
             )
         except Exception as exc:
             print(f"Warning: could not compute state field range: {exc}")
-    if not ranges and field_name:
+    if not ranges and field_name and allow_pipeline_fallback:
         ranges = pipeline_field_ranges(time_value, field_name, association, component)
+    if not ranges:
+        return None
+    return [min(item[0] for item in ranges), max(item[1] for item in ranges)]
+
+
+def state_data_field_range(view, time_value, field_name="", association="", component=None):
+    value_range = state_visible_field_range(
+        view,
+        time_value,
+        field_name,
+        association,
+        component,
+        allow_pipeline_fallback=True,
+    )
+    if value_range:
+        return value_range
+    ranges = pipeline_field_ranges(time_value, field_name, association, component)
     if not ranges:
         return None
     return [min(item[0] for item in ranges), max(item[1] for item in ranges)]
@@ -1568,7 +1666,7 @@ def pipeline_field_ranges(time_value, field_name, association="", component=None
 
 
 def compute_state_shared_color_range(case_items, reader_ref, state_color_field):
-    if COLOR_RANGE_MODE != "auto_all":
+    if COLOR_RANGE_MODE != "all_times":
         return None
 
     combined = []
@@ -1586,9 +1684,9 @@ def compute_state_shared_color_range(case_items, reader_ref, state_color_field):
             )
             if not target_field:
                 raise RuntimeError("state has no visible colored field to scan")
-            for time_value in selected_times(reader, case_dir):
+            for time_value in available_times(reader, case_dir):
                 reader.UpdatePipeline(time_value)
-                value_range = state_visible_field_range(
+                value_range = state_data_field_range(
                     view,
                     time_value,
                     target_field,
@@ -1654,10 +1752,6 @@ def run_state_case(case_item, reader_ref, state_color_field, shared_color_range=
     if disable_reset:
         disable_reset()
     view = render_view_from_state()
-    view.OrientationAxesVisibility = 1 if SHOW_ORIENTATION_AXES else 0
-
-    if ROI_MODE == "clip_box":
-        update_existing_box_clip()
     field_label = state_field_label(view, state_color_field)
     output_dir = case_output / safe_path_part(field_label)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1672,20 +1766,20 @@ def run_state_case(case_item, reader_ref, state_color_field, shared_color_range=
             shared_color_range,
             time_value,
         )
-        if COLOR_RANGE_MODE == "auto_each" and applied_color_range:
+        if COLOR_RANGE_MODE in ("data", "visible") and applied_color_range:
             print(
                 "Single-frame color range "
                 f"for {field_label} at t={time_value:g}: "
                 f"{format_color_range(applied_color_range)}"
             )
-        image_size = configure_state_roi_camera(view, time_value, reader)
+        image_size = configure_state_visible_bounds_camera(view, time_value, reader)
         Render(view)
         apply_state_color_range(view, state_color_field, shared_color_range, time_value)
-        image_size = configure_state_roi_camera(view, time_value, reader)
+        image_size = configure_state_visible_bounds_camera(view, time_value, reader)
         output_file = output_dir / state_screenshot_name(
             case_name, time_index, time_value, field_label
         )
-        SaveScreenshot(str(output_file), view, ImageResolution=image_size)
+        save_state_screenshot(output_file, view, image_size)
         print(f"Saved {output_file}")
 
 
@@ -1699,18 +1793,10 @@ def main_pvsm():
 
     reader_ref = pvsm_reader_reference(PVSM_STATE_FILE)
     state_color_field = pvsm_color_field(PVSM_STATE_FILE)
-    if FIELD_POLICY == "override":
-        print(
-            "ParaView state mode: overriding state coloring with GUI field "
-            f"{FIELD_NAME}"
-            + (f" ({FIELD_COMPONENT})" if FIELD_COMPONENT else "")
-        )
-    else:
-        print(
-            "ParaView state mode: using state coloring field "
-            f"{state_color_field or '(detected from visible representation)'}; "
-            f"GUI field {FIELD_NAME} is ignored."
-        )
+    print(
+        "ParaView state mode: using state coloring field "
+        f"{state_color_field or '(detected from visible representation)'}."
+    )
     print(f"Color range mode: {COLOR_RANGE_MODE}")
     handle_state_scalar_geometry_risks(PVSM_STATE_FILE)
     case_items = state_case_items()
@@ -1764,7 +1850,7 @@ def main_generated():
     times = selected_times(reader)
     shared_color_range = (
         compute_shared_color_range(source, times)
-        if COLOR_RANGE_MODE == "auto_all"
+        if COLOR_RANGE_MODE == "all_times"
         else None
     )
     if shared_color_range:
@@ -1787,7 +1873,7 @@ def main_generated():
 
             single_frame_range = (
                 range_for_slice(slice_filter)
-                if COLOR_RANGE_MODE == "auto_each"
+                if COLOR_RANGE_MODE in ("data", "visible")
                 else None
             )
             display = configure_display(
@@ -1830,10 +1916,7 @@ def main_generated():
 
 
 def main():
-    if STYLE_SOURCE == "pvsm":
-        main_pvsm()
-    else:
-        main_generated()
+    main_pvsm()
 
 
 if __name__ == "__main__":
