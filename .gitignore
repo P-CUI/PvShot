@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+output/
+
+# Local OpenFOAM case data can be very large.
+示例/
+
+# ParaView/OpenFOAM generated scratch data.
+*.foam~
+*.log
