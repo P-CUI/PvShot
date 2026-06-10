@@ -4,6 +4,7 @@ __pycache__/
 output/
 build/
 dist/
+release/
 *.spec
 
 # Local OpenFOAM case data can be very large.
