@@ -2,6 +2,9 @@ __pycache__/
 *.py[cod]
 
 output/
+build/
+dist/
+*.spec
 
 # Local OpenFOAM case data can be very large.
 示例/

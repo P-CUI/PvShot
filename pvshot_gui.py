@@ -4,13 +4,17 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
 import webview
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    SCRIPT_DIR = Path(sys.executable).resolve().parent
+else:
+    SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR / "pvshot_config.json"
 PREPARE_SCRIPT = SCRIPT_DIR / "prepare_pvshot_environment.ps1"
 SCREENSHOT_SCRIPT = SCRIPT_DIR / "screenshot_openfoam_slices.py"
